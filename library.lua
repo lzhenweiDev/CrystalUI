@@ -15,7 +15,9 @@ local ProtectGui = nil
 
 -- Erstelle ProtectGui falls nicht vorhanden
 if syn and syn.protect_gui then
-    ProtectGui = syn.protect_gui
+    ProtectGui = function(obj)
+        obj.Parent = syn.protect_gui()
+    end
 elseif gethui then
     ProtectGui = function(obj)
         obj.Parent = gethui()
@@ -71,11 +73,8 @@ local function CreateTween(instance, properties, duration, easingStyle, easingDi
     easingDirection = easingDirection or Enum.EasingDirection.Out
     duration = duration or 0.3
     
-    local tween = TweenService:Create(
-        instance,
-        TweenInfo.new(duration, easingStyle, easingDirection),
-        properties
-    )
+    local tweenInfo = TweenInfo.new(duration, easingStyle, easingDirection)
+    local tween = TweenService:Create(instance, tweenInfo, properties)
     return tween
 end
 
@@ -95,42 +94,29 @@ function CrystalUI:CreateWindow(config)
     local theme = self.Themes[config.Theme or "Default"] or self.Themes.Default
     
     local window = {}
+    window.ScreenGui = nil
     
     -- Main GUI
-    local ScreenGui = CreateInstance("ScreenGui", {
+    window.ScreenGui = CreateInstance("ScreenGui", {
         Name = config.Name or "CrystalUI",
         ResetOnSpawn = false,
         ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     })
-    ProtectGui(ScreenGui)
+    ProtectGui(window.ScreenGui)
     
     -- Hauptcontainer
     local MainFrame = CreateInstance("Frame", {
         Name = "Main",
-        Size = UDim2.new(0, 550, 0, 400),
-        Position = UDim2.new(0.5, -275, 0.5, -200),
+        Size = UDim2.new(0, 600, 0, 400),
+        Position = UDim2.new(0.5, -300, 0.5, -200),
         BackgroundColor3 = theme.Background,
         BorderSizePixel = 0,
-        Parent = ScreenGui
+        Parent = window.ScreenGui
     })
     
     -- Ecken abrunden
     local Corner = CreateInstance("UICorner", {
         CornerRadius = UDim.new(0, 8),
-        Parent = MainFrame
-    })
-    
-    -- Schatten
-    local Shadow = CreateInstance("ImageLabel", {
-        Name = "Shadow",
-        Image = "rbxassetid://6014261993",
-        ImageColor3 = Color3.fromRGB(0, 0, 0),
-        ImageTransparency = 0.8,
-        Size = UDim2.new(1, 20, 1, 20),
-        Position = UDim2.new(0, -10, 0, -10),
-        BackgroundTransparency = 1,
-        ScaleType = Enum.ScaleType.Slice,
-        SliceCenter = Rect.new(49, 49, 450, 450),
         Parent = MainFrame
     })
     
@@ -257,6 +243,7 @@ function CrystalUI:CreateWindow(config)
         ScrollBarThickness = 4,
         ScrollBarImageColor3 = theme.Accent,
         CanvasSize = UDim2.new(0, 0, 0, 0),
+        ScrollBarImageTransparency = 0.5,
         Parent = ContentFrame
     })
     
@@ -315,6 +302,19 @@ function CrystalUI:CreateWindow(config)
     local tabs = {}
     local currentTab = nil
     
+    -- Content Frame für den gesamten Content
+    local allContent = CreateInstance("Frame", {
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        Parent = ScrollingFrame
+    })
+    
+    local allContentList = CreateInstance("UIListLayout", {
+        Padding = UDim.new(0, 5),
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Parent = allContent
+    })
+    
     -- Tab erstellen
     function window:CreateTab(name, icon)
         local tabButton = CreateInstance("TextButton", {
@@ -341,7 +341,7 @@ function CrystalUI:CreateWindow(config)
             Size = UDim2.new(1, 0, 1, 0),
             Visible = false,
             BackgroundTransparency = 1,
-            Parent = ScrollingFrame
+            Parent = allContent
         })
         
         local tabList = CreateInstance("UIListLayout", {
@@ -382,16 +382,23 @@ function CrystalUI:CreateWindow(config)
             CreateTween(tabButton, {BackgroundColor3 = theme.Accent}, 0.2):Play()
             tabContent.Visible = true
             
-            ScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, tabList.AbsoluteContentSize.Y + 20)
+            wait(0.1)
+            ScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, allContentList.AbsoluteContentSize.Y + 20)
         end)
         
         tabs[tabButton] = {Content = tabContent, List = tabList}
         
         if not currentTab then
-            tabButton.MouseButton1Click:Fire()
+            -- Warte einen Frame bevor wir den ersten Tab aktivieren
+            spawn(function()
+                wait(0.1)
+                tabButton.MouseButton1Click:Fire()
+            end)
         end
         
         -- Section erstellen
+        local sections = {}
+        
         function window:CreateSection(name)
             local section = {}
             
@@ -466,6 +473,8 @@ function CrystalUI:CreateWindow(config)
                         callback()
                     end
                 end)
+                
+                ScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, allContentList.AbsoluteContentSize.Y + 40)
                 
                 return button
             end
@@ -550,6 +559,8 @@ function CrystalUI:CreateWindow(config)
                     end
                 end)
                 
+                ScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, allContentList.AbsoluteContentSize.Y + 40)
+                
                 return {
                     SetState = function(self, state)
                         toggled = state
@@ -626,11 +637,11 @@ function CrystalUI:CreateWindow(config)
                     Parent = sliderDot
                 })
                 
-                local dragging = false
+                local sliderDragging = false
                 
                 local function updateSlider(input)
-                    local size = sliderBg.AbsoluteSize.X
-                    local pos = math.clamp((input.Position.X - sliderBg.AbsolutePosition.X) / size, 0, 1)
+                    local sizeX = sliderBg.AbsoluteSize.X
+                    local pos = math.clamp((input.Position.X - sliderBg.AbsolutePosition.X) / sizeX, 0, 1)
                     local value = math.floor(min + (max - min) * pos)
                     
                     sliderFill.Size = UDim2.new(pos, 0, 1, 0)
@@ -644,30 +655,35 @@ function CrystalUI:CreateWindow(config)
                     return value
                 end
                 
-                sliderDot.InputBegan:Connect(function(input)
+                local sliderInputBegan
+                sliderInputBegan = sliderDot.InputBegan:Connect(function(input)
                     if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                        dragging = true
+                        sliderDragging = true
                     end
                 end)
                 
-                UserInputService.InputEnded:Connect(function(input)
+                local sliderInputEnded
+                sliderInputEnded = UserInputService.InputEnded:Connect(function(input)
                     if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                        dragging = false
+                        sliderDragging = false
                     end
                 end)
                 
-                UserInputService.InputChanged:Connect(function(input)
-                    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+                local sliderInputChanged
+                sliderInputChanged = UserInputService.InputChanged:Connect(function(input)
+                    if sliderDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
                         updateSlider(input)
                     end
                 end)
                 
                 sliderBg.InputBegan:Connect(function(input)
                     if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                        dragging = true
+                        sliderDragging = true
                         updateSlider(input)
                     end
                 end)
+                
+                ScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, allContentList.AbsoluteContentSize.Y + 60)
                 
                 return {
                     SetValue = function(self, value)
@@ -711,7 +727,7 @@ function CrystalUI:CreateWindow(config)
                 })
                 
                 local optionsList = CreateInstance("Frame", {
-                    Size = UDim2.new(1, 0, 0, 0),
+                    Size = UDim2.new(1, 0, 0, #options * 30 + 10),
                     Position = UDim2.new(0, 0, 1, 5),
                     BackgroundColor3 = theme.Dropdown,
                     BorderSizePixel = 0,
@@ -796,6 +812,8 @@ function CrystalUI:CreateWindow(config)
                     end
                 end)
                 
+                ScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, allContentList.AbsoluteContentSize.Y + 40)
+                
                 return {
                     Refresh = function(self, newOptions)
                         options = newOptions
@@ -865,6 +883,8 @@ function CrystalUI:CreateWindow(config)
                     end
                 end)
                 
+                ScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, allContentList.AbsoluteContentSize.Y + 40)
+                
                 return {
                     SetText = function(self, text)
                         textbox.Text = text
@@ -893,6 +913,8 @@ function CrystalUI:CreateWindow(config)
                     Parent = label
                 })
                 
+                ScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, allContentList.AbsoluteContentSize.Y + 25)
+                
                 return {
                     SetText = function(self, newText)
                         label.Text = newText
@@ -900,33 +922,34 @@ function CrystalUI:CreateWindow(config)
                 }
             end
             
-            -- Content Größe aktualisieren
-            tabContent.ChildAdded:Connect(function()
-                ScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, tabList.AbsoluteContentSize.Y + 20)
-            end)
-            
+            sections[#sections + 1] = section
             return section
         end
         
-        -- Minimieren Funktion
-        local minimized = false
-        MinimizeButton.MouseButton1Click:Connect(function()
-            if not minimized then
-                MainFrame.Size = UDim2.new(0, 550, 0, 45)
-                minimized = true
-            else
-                MainFrame.Size = UDim2.new(0, 550, 0, 400)
-                minimized = false
-            end
-        end)
-        
-        -- Schließen Funktion
-        CloseButton.MouseButton1Click:Connect(function()
-            ScreenGui:Destroy()
-        end)
-        
         return window
     end
+    
+    -- Minimieren Funktion
+    local minimized = false
+    local originalSize = MainFrame.Size
+    
+    MinimizeButton.MouseButton1Click:Connect(function()
+        if not minimized then
+            MainFrame.Size = UDim2.new(0, 600, 0, 45)
+            minimized = true
+        else
+            MainFrame.Size = originalSize
+            minimized = false
+        end
+    end)
+    
+    -- Schließen Funktion
+    CloseButton.MouseButton1Click:Connect(function()
+        window.ScreenGui:Destroy()
+    end)
+    
+    -- Setze ScreenGui Referenz für Notifications
+    window.NotificationScreenGui = window.ScreenGui
     
     return window
 end
@@ -940,6 +963,10 @@ end
 
 -- Benachrichtigung erstellen
 function CrystalUI:CreateNotification(title, text, duration)
+    if not self.NotificationScreenGui then
+        return
+    end
+    
     local theme = self.Themes.Default
     
     local notification = CreateInstance("Frame", {
@@ -947,7 +974,7 @@ function CrystalUI:CreateNotification(title, text, duration)
         Position = UDim2.new(1, -260, 1, -90),
         BackgroundColor3 = theme.Main,
         BorderSizePixel = 0,
-        Parent = self.ScreenGui
+        Parent = self.NotificationScreenGui
     })
     
     local notifCorner = CreateInstance("UICorner", {
